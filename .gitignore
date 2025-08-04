@@ -1,0 +1,14 @@
+# Compiled Binaries
+Server
+server
+client
+a.out
+
+# macOS Debug Symbols
+*.dSYM/
+
+# OS-generated files
+.DS_Store
+
+# IDE / Editor Configuration
+.vscode/
