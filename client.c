@@ -3,13 +3,29 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 
 #define BUFFER_SIZE 1024
 
+int server_socket;
+char buffer[BUFFER_SIZE];
+
+void *receive_handler(void *arg) {
+    while (1) {
+        memset(buffer, 0, BUFFER_SIZE);
+        int receive = recv(server_socket, buffer, sizeof(buffer), 0);
+        if (receive > 0) {
+            printf("%s\n", buffer);
+        } else if (receive == 0) {
+            printf("Server disconnected.\n");
+            exit(0);
+        }
+    }
+}
+
 int main() {
-    int server_socket;
     struct sockaddr_in server_addr;
-    char buffer[BUFFER_SIZE];
+    pthread_t tid;
 
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     server_addr.sin_family = AF_INET;
@@ -21,10 +37,14 @@ int main() {
         return -1;
     }
 
-    printf("Connected to server!\n");
-    memset(buffer, 0, BUFFER_SIZE);
-    recv(server_socket, buffer, sizeof(buffer), 0);
-    printf("%s\n", buffer);
+    pthread_create(&tid, NULL, receive_handler, NULL);
+
+    while (1) {
+        memset(buffer, 0, BUFFER_SIZE);
+        fgets(buffer, BUFFER_SIZE, stdin);
+        buffer[strcspn(buffer, "\n")] = '\0';
+        send(server_socket, buffer, strlen(buffer), 0);
+    }
 
     close(server_socket);
     return 0;
