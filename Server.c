@@ -19,6 +19,7 @@ typedef struct {
 
 Client clients[MAX_CLIENTS];
 int num_clients = 0;
+pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void clear_buffer(char *buffer) {
     memset(buffer, 0, BUFFER_SIZE);
@@ -36,8 +37,10 @@ int handle_registration_login(int client_socket, char *username) {
     choice = atoi(buffer);
 
     if (choice == 1) {
+        pthread_mutex_lock(&clients_mutex);
         for (int i = 0; i < num_clients; i++) {
             if (strcmp(clients[i].username, username) == 0) {
+                pthread_mutex_unlock(&clients_mutex);
                 send(client_socket, "Username already exists\n", 25, 0);
                 return 0;
             }
@@ -52,9 +55,31 @@ int handle_registration_login(int client_socket, char *username) {
         clients[num_clients].socket = client_socket;
         clients[num_clients].logged_in = 1;
         num_clients++;
+        pthread_mutex_unlock(&clients_mutex);
 
         send(client_socket, "Registration successful\n", 25, 0);
         return 1;
+    } else if (choice == 2) {
+        for (int i = 0; i < num_clients; i++) {
+            if (strcmp(clients[i].username, username) == 0) {
+                send(client_socket, "Enter password: ", 16, 0);
+                clear_buffer(password);
+                recv(client_socket, password, sizeof(password), 0);
+                password[strcspn(password, "\n")] = '\0';
+
+                if (strcmp(clients[i].password, password) == 0) {
+                    clients[i].socket = client_socket;
+                    clients[i].logged_in = 1;
+                    send(client_socket, "Login successful\n", 18, 0);
+                    return 1;
+                } else {
+                    send(client_socket, "Invalid password\n", 18, 0);
+                    return 0;
+                }
+            }
+        }
+        send(client_socket, "Invalid username\n", 18, 0);
+        return 0;
     } else {
         close(client_socket);
         pthread_exit(NULL);
@@ -75,7 +100,7 @@ void *handle_client(void *arg) {
         logged_in = handle_registration_login(client_socket, username);
     }
 
-    send(client_socket, "Welcome to the session\n", 23, 0);
+    send(client_socket, "Authentication complete\n", 24, 0);
     close(client_socket);
     pthread_exit(NULL);
 }
