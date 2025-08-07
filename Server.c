@@ -5,23 +5,77 @@
 #include <pthread.h>
 #include <arpa/inet.h>
 
+#define MAX_CLIENTS 10
 #define BUFFER_SIZE 1024
+#define USERNAME_LEN 32
+#define PASSWORD_LEN 32
+
+typedef struct {
+    int socket;
+    char username[USERNAME_LEN];
+    char password[PASSWORD_LEN];
+    int logged_in;
+} Client;
+
+Client clients[MAX_CLIENTS];
+int num_clients = 0;
+
+void clear_buffer(char *buffer) {
+    memset(buffer, 0, BUFFER_SIZE);
+}
+
+int handle_registration_login(int client_socket, char *username) {
+    char buffer[BUFFER_SIZE], password[PASSWORD_LEN];
+    int choice;
+
+    sprintf(buffer, "1. Register\n2. Login\n3. Exit\n");
+    send(client_socket, buffer, strlen(buffer), 0);
+
+    clear_buffer(buffer);
+    recv(client_socket, buffer, sizeof(buffer), 0);
+    choice = atoi(buffer);
+
+    if (choice == 1) {
+        for (int i = 0; i < num_clients; i++) {
+            if (strcmp(clients[i].username, username) == 0) {
+                send(client_socket, "Username already exists\n", 25, 0);
+                return 0;
+            }
+        }
+        send(client_socket, "Create password: ", 17, 0);
+        clear_buffer(password);
+        recv(client_socket, password, sizeof(password), 0);
+        password[strcspn(password, "\n")] = '\0';
+
+        strcpy(clients[num_clients].username, username);
+        strcpy(clients[num_clients].password, password);
+        clients[num_clients].socket = client_socket;
+        clients[num_clients].logged_in = 1;
+        num_clients++;
+
+        send(client_socket, "Registration successful\n", 25, 0);
+        return 1;
+    } else {
+        close(client_socket);
+        pthread_exit(NULL);
+    }
+}
 
 void *handle_client(void *arg) {
     int client_socket = *((int *)arg);
-    char buffer[BUFFER_SIZE];
+    char username[USERNAME_LEN];
+    int logged_in = 0;
 
-    send(client_socket, "Welcome to chat server\n", 23, 0);
+    send(client_socket, "Enter username: ", 16, 0);
+    clear_buffer(username);
+    recv(client_socket, username, sizeof(username), 0);
+    username[strcspn(username, "\n")] = '\0';
 
-    while (1) {
-        memset(buffer, 0, BUFFER_SIZE);
-        int bytes = recv(client_socket, buffer, sizeof(buffer), 0);
-        if (bytes <= 0) {
-            break;
-        }
-        send(client_socket, buffer, bytes, 0);
+    while (!logged_in) {
+        logged_in = handle_registration_login(client_socket, username);
     }
 
+    send(client_socket, "Welcome to the session\n", 23, 0);
     close(client_socket);
     pthread_exit(NULL);
 }
