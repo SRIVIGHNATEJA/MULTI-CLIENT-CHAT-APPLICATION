@@ -25,6 +25,19 @@ void clear_buffer(char *buffer) {
     memset(buffer, 0, BUFFER_SIZE);
 }
 
+void broadcast_message(const char *message, int exclude_socket) {
+    pthread_mutex_lock(&clients_mutex);
+    for (int i = 0; i < num_clients; i++) {
+        if (clients[i].socket != exclude_socket && clients[i].logged_in) {
+            if (send(clients[i].socket, message, strlen(message), 0) < 0) {
+                perror("Send failed");
+                continue;
+            }
+        }
+    }
+    pthread_mutex_unlock(&clients_mutex);
+}
+
 int handle_registration_login(int client_socket, char *username) {
     char buffer[BUFFER_SIZE], password[PASSWORD_LEN];
     int choice;
@@ -88,6 +101,7 @@ int handle_registration_login(int client_socket, char *username) {
 
 void *handle_client(void *arg) {
     int client_socket = *((int *)arg);
+    char buffer[BUFFER_SIZE];
     char username[USERNAME_LEN];
     int logged_in = 0;
 
@@ -100,7 +114,29 @@ void *handle_client(void *arg) {
         logged_in = handle_registration_login(client_socket, username);
     }
 
-    send(client_socket, "Authentication complete\n", 24, 0);
+    while (1) {
+        clear_buffer(buffer);
+        sprintf(buffer, "1. Broadcast message\n2. Exit\n");
+        send(client_socket, buffer, strlen(buffer), 0);
+
+        clear_buffer(buffer);
+        recv(client_socket, buffer, sizeof(buffer), 0);
+        int choice = atoi(buffer);
+
+        if (choice == 1) {
+            send(client_socket, "Enter message: ", 15, 0);
+            clear_buffer(buffer);
+            recv(client_socket, buffer, sizeof(buffer), 0);
+            buffer[strcspn(buffer, "\n")] = '\0';
+
+            char message[BUFFER_SIZE];
+            snprintf(message, sizeof(message), "[%s]: %s", username, buffer);
+            broadcast_message(message, client_socket);
+        } else {
+            break;
+        }
+    }
+
     close(client_socket);
     pthread_exit(NULL);
 }
